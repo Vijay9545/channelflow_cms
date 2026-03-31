@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react';
-import { FiGift, FiPercent, FiCalendar, FiToggleRight } from 'react-icons/fi';
+import { FiGift, FiPlus, FiTrash, FiCalendar, FiActivity } from 'react-icons/fi';
 import api from '../api';
 import anime, { animateStagger } from '../hooks/useAnime';
+import './Rewards.css';
 
 const Rewards = () => {
   const [rewards, setRewards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({
+    point: '',
+    fromDate: '',
+    toDate: '',
+    isActive: true
+  });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchRewards();
@@ -39,15 +48,45 @@ const Rewards = () => {
     }
   };
 
-  const getRewardBadge = (type) => {
-    return <span className="badge badge-neutral">{type || 'Unknown'}</span>;
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this reward configuration?')) return;
+    try {
+      await api.delete(`/reward/deleteRewardPoint/${id}`);
+      fetchRewards();
+    } catch (err) {
+      console.error('Failed to delete reward', err);
+      alert('Failed to delete reward point.');
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setSubmitting(true);
+      await api.post('/reward/addRewardPoint', formData);
+      setShowModal(false);
+      setFormData({ point: '', fromDate: '', toDate: '', isActive: true });
+      fetchRewards();
+    } catch (err) {
+      console.error('Failed to add reward', err);
+      alert('Failed to add reward point.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filteredRewards = rewards.filter(r => {
-    const nameStr = (r?.name || r?.title || '').toString();
-    const typeStr = (r?.type || '').toString();
+    const pointStr = (r?.point || '').toString();
     const term = searchTerm.toLowerCase();
-    return nameStr.toLowerCase().includes(term) || typeStr.toLowerCase().includes(term);
+    return pointStr.includes(term);
   });
 
   return (
@@ -68,11 +107,14 @@ const Rewards = () => {
           <input 
             type="text" 
             className="form-control" 
-            placeholder="Search rewards..." 
+            placeholder="Search by points..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <FiPlus /> Add Reward Config
+        </button>
       </div>
 
       {error && <div className="alert alert-danger mb-4">{error}</div>}
@@ -86,13 +128,13 @@ const Rewards = () => {
             {rewards.slice(0, 4).map((reward, i) => (
               <div key={i} className="card glass-panel d-flex gap-3 align-center">
                 <div className="stat-icon" style={{backgroundColor: 'rgba(99,102,241,0.12)', color: 'var(--primary)'}}>
-                  {reward.type === 'percentage' ? <FiPercent /> : <FiGift />}
+                  <FiGift />
                 </div>
                 <div>
                   <div className="font-medium" style={{fontSize: '1.1rem'}}>
-                    {reward.type === 'percentage' ? `${reward.value}%` : `₹${reward.value}`}
+                    {reward.point} Points
                   </div>
-                  <p className="text-muted m-0" style={{fontSize: '0.8rem'}}>{reward.name || reward.title || 'Reward'}</p>
+                  <p className="text-muted m-0" style={{fontSize: '0.8rem'}}>Per ₹100 Spent</p>
                 </div>
               </div>
             ))}
@@ -104,39 +146,47 @@ const Rewards = () => {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Name / Title</th>
-                    <th>Type</th>
-                    <th>Value</th>
-                    <th>Min Order</th>
-                    <th>Valid Until</th>
+                    <th>Reward Points</th>
+                    <th>Rate</th>
+                    <th>Valid From</th>
+                    <th>Valid To</th>
                     <th>Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRewards.length > 0 ? filteredRewards.map((reward, i) => (
                     <tr key={reward._id || reward.id || i}>
-                      <td className="font-medium">{reward.name || reward.title || '—'}</td>
-                      <td>{getRewardBadge(reward.type)}</td>
-                      <td>
-                        {reward.type === 'percentage'
-                          ? `${reward.value || reward.discount}%`
-                          : `₹${reward.value || reward.amount}`
-                        }
+                      <td className="font-medium">{reward.point} Points</td>
+                      <td>Per ₹100</td>
+                      <td className="text-muted">
+                        {new Date(reward.fromDate).toLocaleDateString()}
                       </td>
                       <td className="text-muted">
-                        {reward.minOrderValue || reward.minimumOrder ? `₹${reward.minOrderValue || reward.minimumOrder}` : '—'}
-                      </td>
-                      <td className="text-muted">
-                        {reward.validUntil || reward.expiryDate
-                          ? new Date(reward.validUntil || reward.expiryDate).toLocaleDateString()
-                          : '—'
-                        }
+                        {new Date(reward.toDate).toLocaleDateString()}
                       </td>
                       <td>
                         {reward.isActive
                           ? <span className="badge badge-success">Active</span>
                           : <span className="badge badge-neutral">Inactive</span>
                         }
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button 
+                          onClick={() => handleDelete(reward._id || reward.id)}
+                          style={{ 
+                            background: '#ef4444', 
+                            color: 'white', 
+                            border: 'none', 
+                            padding: '8px 16px', 
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            display: 'inline-block'
+                          }}
+                        >
+                          DELETE
+                        </button>
                       </td>
                     </tr>
                   )) : (
@@ -151,6 +201,77 @@ const Rewards = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* Add Reward Modal */}
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="modal-content glass-panel animate-scale-up">
+            <div className="modal-header">
+              <h3><FiGift /> Add Reward Configuration</h3>
+              <button className="btn-close" onClick={() => setShowModal(false)}>&times;</button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="modal-body">
+                <div className="form-group mb-3">
+                  <label>Points (per ₹100)</label>
+                  <input 
+                    type="number" 
+                    name="point"
+                    className="form-control" 
+                    placeholder="e.g. 5" 
+                    required
+                    value={formData.point}
+                    onChange={handleInputChange}
+                  />
+                  <p className="text-muted text-sm mt-1">Number of points earned for every ₹100 spent</p>
+                </div>
+                
+                <div className="row">
+                  <div className="col form-group mb-3">
+                    <label>From Date</label>
+                    <input 
+                      type="date" 
+                      name="fromDate"
+                      className="form-control" 
+                      required
+                      value={formData.fromDate}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  <div className="col form-group mb-3">
+                    <label>To Date</label>
+                    <input 
+                      type="date" 
+                      name="toDate"
+                      className="form-control" 
+                      required
+                      value={formData.toDate}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group d-flex align-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="isActive"
+                    name="isActive"
+                    checked={formData.isActive}
+                    onChange={handleInputChange}
+                  />
+                  <label htmlFor="isActive">Active upon creation</label>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : 'Save Configuration'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

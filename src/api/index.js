@@ -23,4 +23,17 @@ api.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
+// Add a response interceptor to handle 505 (Invalid Token)
+api.interceptors.response.use((response) => {
+  return response;
+}, (error) => {
+  if (error.response && error.response.status === 505) {
+    console.error('[API] Token Invalid or Expired (Status 505). Redirecting to login.');
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
+    window.location.href = '/login';
+  }
+  return Promise.reject(error);
+});
+
 export default api;
